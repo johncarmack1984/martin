@@ -26,6 +26,13 @@ inputs:
       Instrument the job with cargo-llvm-cov, so its tests record coverage.
       Collect it with the `upload-coverage` action.
     default: "false"
+  sccache:
+    description: >-
+      Compile through sccache backed by the GitHub Actions cache, covering the
+      C/C++ objects (bundled DuckDB, maplibre-native) that rust-cache never
+      caches. Replaces the `cache` input rather than stacking with it: both
+      draw on the same 10GB quota, so enabling this disables rust-cache.
+    default: "false"
 runs:
   using: composite
   steps:
@@ -52,7 +59,16 @@ runs:
       env:
         COMPONENTS: ${{ inputs.components }}
       run: rustup component add $COMPONENTS
-    - if: inputs.cache == 'true' && github.event_name != 'release' && github.event_name != 'workflow_dispatch'
+    - if: inputs.sccache == 'true'
+      uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+    - if: inputs.sccache == 'true'
+      shell: bash
+      run: |
+        echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+        echo "SCCACHE_GHA_ENABLED=true" >> "$GITHUB_ENV"
+        echo "CMAKE_C_COMPILER_LAUNCHER=sccache" >> "$GITHUB_ENV"
+        echo "CMAKE_CXX_COMPILER_LAUNCHER=sccache" >> "$GITHUB_ENV"
+    - if: inputs.sccache != 'true' && inputs.cache == 'true' && github.event_name != 'release' && github.event_name != 'workflow_dispatch'
       uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2 # zizmor: ignore[cache-poisoning] dev-only build cache; poisoning risk accepted
       with:
         save-if: ${{ github.ref == 'refs/heads/main' }}
