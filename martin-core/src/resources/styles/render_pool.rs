@@ -1,4 +1,5 @@
 use std::num::{NonZeroU32, NonZeroUsize};
+use std::panic::{self, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
@@ -7,7 +8,7 @@ use maplibre_native::{
     CameraUpdate, Image, ImageRenderer, ImageRendererBuilder, LatLng, Static, Tile,
 };
 use tokio::sync::oneshot;
-use tracing::info;
+use tracing::{error, info};
 
 use crate::overlay::{AppliedOverlay, OverlaySpec, apply_to_style};
 use crate::resources::styles::StyleError;
@@ -257,11 +258,37 @@ fn worker_loop<W: Worker>(rx: &flume::Receiver<Msg<W::Request>>) {
     while let Ok(msg) = rx.recv() {
         match msg {
             Msg::Render(request, response) => {
-                let _ = response.send(worker.render(request));
+                // The pool is spawned once, so a panic that unwound this thread would cost the
+                // worker for the rest of the process, and once the last one is gone every later
+                // request fails. The request that panicked is answered with an error and the
+                // renderer, left mid-frame by the unwind, is rebuilt.
+                let result = match panic::catch_unwind(AssertUnwindSafe(|| worker.render(request)))
+                {
+                    Ok(result) => result,
+                    Err(payload) => {
+                        error!(
+                            kind = W::NAME,
+                            panic = panic_message(payload.as_ref()),
+                            "Render worker panicked, replacing its renderer"
+                        );
+                        worker = W::default();
+                        Err(StyleError::RenderPanicked)
+                    }
+                };
+                let _ = response.send(result);
             }
             Msg::Shutdown => break,
         }
     }
+}
+
+/// The message of a panic payload, when it carries one.
+fn panic_message(payload: &(dyn std::any::Any + Send)) -> &str {
+    payload
+        .downcast_ref::<&str>()
+        .copied()
+        .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
+        .unwrap_or("non-string panic payload")
 }
 
 /// A render backend bound to a single worker thread.
@@ -464,6 +491,7 @@ impl StaticRenderer {
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     use super::*;
 
@@ -529,6 +557,58 @@ mod tests {
             let unique: std::collections::HashSet<_> = img.pixels().copied().collect();
             assert!(unique.len() > 1, "image is blank");
         }
+    }
+
+    /// Answers `Err(RenderingIsDisabled)`, or panics when asked to.
+    struct FlakyWorker;
+
+    impl Default for FlakyWorker {
+        fn default() -> Self {
+            WORKERS_BUILT.fetch_add(1, Ordering::SeqCst);
+            Self
+        }
+    }
+
+    static WORKERS_BUILT: AtomicUsize = AtomicUsize::new(0);
+
+    impl Worker for FlakyWorker {
+        const NAME: &'static str = "flaky";
+        type Request = bool;
+
+        #[expect(
+            clippy::panic_in_result_fn,
+            reason = "the panic is what this worker is for"
+        )]
+        fn render(&mut self, should_panic: bool) -> Result<Image, StyleError> {
+            assert!(!should_panic, "renderer blew up");
+            Err(StyleError::RenderingIsDisabled)
+        }
+    }
+
+    #[tokio::test]
+    async fn a_panicking_request_does_not_take_the_worker_with_it() {
+        let pool = RenderPool::<FlakyWorker>::new(NonZeroUsize::new(1)).expect("spawn render pool");
+        // The worker is built on its own thread, so wait for an answer before counting it.
+        let first = pool.render(false).await;
+        assert!(
+            matches!(first, Err(StyleError::RenderingIsDisabled)),
+            "{first:?}"
+        );
+        let before = WORKERS_BUILT.load(Ordering::SeqCst);
+
+        let panicked = pool.render(true).await;
+        assert!(
+            matches!(panicked, Err(StyleError::RenderPanicked)),
+            "{panicked:?}"
+        );
+
+        // The only worker answers again, from a fresh renderer.
+        let after = pool.render(false).await;
+        assert!(
+            matches!(after, Err(StyleError::RenderingIsDisabled)),
+            "{after:?}"
+        );
+        assert_eq!(WORKERS_BUILT.load(Ordering::SeqCst), before + 1);
     }
 
     #[tokio::test]
