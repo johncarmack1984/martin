@@ -2,8 +2,9 @@ name: Bench CI Cache
 
 # Measures the wall-clock cost of the three heaviest test jobs in rust.yml under the four
 # cache configurations being compared for the #950 / #3156 follow-up: no cache at all,
-# rust-cache, sccache (which also caches the C/C++ objects from the bundled DuckDB and
-# maplibre-native builds) and both stacked. The suites run exactly as CI runs them, with
+# rust-cache, sccache (which also caches the C/C++ objects the cc crate builds, bundled
+# DuckDB included) and both stacked. The sccache configurations end in the backend they
+# use: `-gha` for the GitHub Actions cache, `-s3` for the bucket in the repository secrets. The suites run exactly as CI runs them, with
 # nextest and coverage instrumentation. Push the branch twice: the first run populates the
 # caches, the second measures the payoff. Every matrix cell has its own rust-cache key and
 # its own sccache cache version, so no configuration can read another's artefacts.
@@ -23,13 +24,19 @@ jobs:
   bench:
     name: ${{ matrix.suite }} (${{ matrix.cache_config }})
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     strategy:
       fail-fast: false
       matrix:
         suite: [unit, duckdb, rendering]
-        cache_config: [none, rust-cache, sccache, combined]
+        cache_config: [none, rust-cache, sccache-s3, combined-s3]
     env:
-      SCCACHE_GHA_VERSION: bench3-${{ matrix.suite }}-${{ matrix.cache_config }}
+      USES_SCCACHE: ${{ startsWith(matrix.cache_config, 'sccache') || startsWith(matrix.cache_config, 'combined') }}
+      USES_RUST_CACHE: ${{ matrix.cache_config == 'rust-cache' || startsWith(matrix.cache_config, 'combined') }}
+      USES_S3: ${{ endsWith(matrix.cache_config, '-s3') }}
+      SCCACHE_GHA_VERSION: bench5-${{ matrix.suite }}-${{ matrix.cache_config }}
       # sccache's own log, so a failed cache write shows its reason (rate limit, conflict, size)
       SCCACHE_ERROR_LOG: /tmp/sccache.log
       SCCACHE_LOG: info
@@ -37,21 +44,38 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
+      - name: Assume the sccache bucket role
+        if: env.USES_S3 == 'true'
+        uses: aws-actions/configure-aws-credentials@cbe3b392738ccf3f987d68400dafcf4b0624a56c # v6.2.4
+        with:
+          role-to-assume: ${{ secrets.AWS_SCCACHE_ROLE_ARN }}
+          aws-region: ${{ secrets.SCCACHE_REGION }}
+      - name: Point sccache at the bucket
+        if: env.USES_S3 == 'true'
+        env:
+          BUCKET: ${{ secrets.SCCACHE_BUCKET }}
+          REGION: ${{ secrets.SCCACHE_REGION }}
+          PREFIX: bench5/${{ matrix.suite }}/${{ matrix.cache_config }}/
+        run: |
+          echo "SCCACHE_BUCKET=$BUCKET" >> "$GITHUB_ENV"
+          echo "SCCACHE_REGION=$REGION" >> "$GITHUB_ENV"
+          echo "SCCACHE_S3_KEY_PREFIX=$PREFIX" >> "$GITHUB_ENV"
+          echo "SCCACHE_S3_USE_SSL=true" >> "$GITHUB_ENV"
       - name: Setup Rust
         uses: $/.github/actions/setup-rust
         with:
           tools: 'just,nextest'
           rendering: ${{ matrix.suite != 'duckdb' }}
           coverage: true
-          sccache: ${{ matrix.cache_config == 'sccache' || matrix.cache_config == 'combined' }}
+          sccache: ${{ env.USES_SCCACHE }}
       # setup-rust's `cache` input only saves on main, so the rust-cache configurations wire
       # the action directly and always save.
       - name: Restore rust-cache
-        if: matrix.cache_config == 'rust-cache' || matrix.cache_config == 'combined'
+        if: env.USES_RUST_CACHE == 'true'
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2 # zizmor: ignore[cache-poisoning] bench-only build cache on a fork
         with:
           save-if: "true"
-          key: bench3-${{ matrix.suite }}-${{ matrix.cache_config }}
+          key: bench5-${{ matrix.suite }}-${{ matrix.cache_config }}
       - name: Run the unit tests
         if: matrix.suite == 'unit'
         run: just test-packages-ci
@@ -65,10 +89,10 @@ jobs:
         if: matrix.suite == 'rendering'
         run: just test-rendering
       - name: sccache stats
-        if: matrix.cache_config == 'sccache' || matrix.cache_config == 'combined'
+        if: env.USES_SCCACHE == 'true'
         run: sccache --show-stats
       - name: sccache write errors
-        if: matrix.cache_config == 'sccache' || matrix.cache_config == 'combined'
+        if: env.USES_SCCACHE == 'true'
         run: |
           grep -iE 'error|warn' /tmp/sccache.log > /tmp/sccache-errors.log || true
           echo "error/warn lines: $(wc -l < /tmp/sccache-errors.log)"

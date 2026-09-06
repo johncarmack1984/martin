@@ -65,7 +65,10 @@ runs:
       shell: bash
       run: |
         echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
-        echo "SCCACHE_GHA_ENABLED=true" >> "$GITHUB_ENV"
+        # A configured bucket selects the S3 backend; otherwise the GitHub Actions cache.
+        if [ -z "${SCCACHE_BUCKET:-}" ]; then
+          echo "SCCACHE_GHA_ENABLED=true" >> "$GITHUB_ENV"
+        fi
         echo "CMAKE_C_COMPILER_LAUNCHER=sccache" >> "$GITHUB_ENV"
         echo "CMAKE_CXX_COMPILER_LAUNCHER=sccache" >> "$GITHUB_ENV"
         # The cc crate (bundled DuckDB, sqlite, ring, zstd) ignores the CMake launcher
