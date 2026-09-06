@@ -36,7 +36,7 @@ jobs:
       USES_SCCACHE: ${{ startsWith(matrix.cache_config, 'sccache') || startsWith(matrix.cache_config, 'combined') }}
       USES_RUST_CACHE: ${{ matrix.cache_config == 'rust-cache' || startsWith(matrix.cache_config, 'combined') }}
       USES_S3: ${{ endsWith(matrix.cache_config, '-s3') }}
-      SCCACHE_GHA_VERSION: bench5-${{ matrix.suite }}-${{ matrix.cache_config }}
+      SCCACHE_GHA_VERSION: bench6-${{ matrix.suite }}-${{ matrix.cache_config }}
       # sccache's own log, so a failed cache write shows its reason (rate limit, conflict, size)
       SCCACHE_ERROR_LOG: /tmp/sccache.log
       SCCACHE_LOG: info
@@ -44,18 +44,23 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
+      # The credentials stay out of the job environment: martin's own unit tests read the
+      # ambient AWS variables, so they are handed to the sccache server alone, below.
       - name: Assume the sccache bucket role
+        id: aws
         if: env.USES_S3 == 'true'
         uses: aws-actions/configure-aws-credentials@cbe3b392738ccf3f987d68400dafcf4b0624a56c # v6.2.4
         with:
           role-to-assume: ${{ secrets.AWS_SCCACHE_ROLE_ARN }}
           aws-region: ${{ secrets.SCCACHE_REGION }}
+          output-env-credentials: false
+          output-credentials: true
       - name: Point sccache at the bucket
         if: env.USES_S3 == 'true'
         env:
           BUCKET: ${{ secrets.SCCACHE_BUCKET }}
           REGION: ${{ secrets.SCCACHE_REGION }}
-          PREFIX: bench5/${{ matrix.suite }}/${{ matrix.cache_config }}/
+          PREFIX: bench6/${{ matrix.suite }}/${{ matrix.cache_config }}/
         run: |
           echo "SCCACHE_BUCKET=$BUCKET" >> "$GITHUB_ENV"
           echo "SCCACHE_REGION=$REGION" >> "$GITHUB_ENV"
@@ -68,6 +73,13 @@ jobs:
           rendering: ${{ matrix.suite != 'duckdb' }}
           coverage: true
           sccache: ${{ env.USES_SCCACHE }}
+      - name: Start the sccache server with the bucket credentials
+        if: env.USES_S3 == 'true'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ steps.aws.outputs.aws-access-key-id }}
+          AWS_SECRET_ACCESS_KEY: ${{ steps.aws.outputs.aws-secret-access-key }}
+          AWS_SESSION_TOKEN: ${{ steps.aws.outputs.aws-session-token }}
+        run: sccache --start-server
       # setup-rust's `cache` input only saves on main, so the rust-cache configurations wire
       # the action directly and always save.
       - name: Restore rust-cache
@@ -75,7 +87,7 @@ jobs:
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2 # zizmor: ignore[cache-poisoning] bench-only build cache on a fork
         with:
           save-if: "true"
-          key: bench5-${{ matrix.suite }}-${{ matrix.cache_config }}
+          key: bench6-${{ matrix.suite }}-${{ matrix.cache_config }}
       - name: Run the unit tests
         if: matrix.suite == 'unit'
         run: just test-packages-ci
