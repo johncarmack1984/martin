@@ -90,7 +90,7 @@ We support these settings:
 
 `EPSG` codes work out of the box.
 Other authorities need a row in the database, see [Non-EPSG coordinate reference systems](#non-epsg-coordinate-reference-systems).
-Grids with `crs: simple` are covered in [Non-geographic grids](#non-geographic-grids).
+Grids with `crs: simple` are covered in [Non-geographic grids](#non-geographic-grids-floor-plans-and-pcmobile-game-maps).
 
 `WorldCRS84Quad` and most grids for other planets have `[2, 1]` tiles at zoom 0.
 The OGC UTM quads have `[1, 2]`.
@@ -172,7 +172,7 @@ Martin therefore adds extra points along the edges before converting, so the sea
     This is the case for CRS of other planets.
     Set `bounds` in the config if the `TileJSON` should have them.
 
-## Non-geographic grids (floor plans and PC/mobile game maps) {#non-geographic-grids}
+## Non-geographic grids (floor plans and PC/mobile game maps)
 
 A grid with `crs: simple` has no location on earth.
 Its units are whatever the data is in, for example pixels of a scanned plan or metres of a game level.
