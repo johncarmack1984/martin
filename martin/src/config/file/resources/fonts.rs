@@ -14,6 +14,7 @@ use crate::config::file::{
     Debug,
     Default,
     PartialEq,
+    Eq,
     Serialize,
     Deserialize,
     CollectUnrecognizedKeys,
@@ -57,7 +58,7 @@ impl FontConfig {
 
         if let Some(sources) = cfg.sources {
             for (id, source) in sources {
-                configs.insert(id.clone(), source.clone());
+                configs.insert(id, source.clone());
                 results
                     .recursively_add_directory(source.get_path().clone())
                     .map_err(|e| ConfigFileError::FontResolutionFailed(e, source.into_path()))?;

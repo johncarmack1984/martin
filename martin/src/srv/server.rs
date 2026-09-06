@@ -36,6 +36,7 @@ use crate::srv::styles_static;
 use crate::srv::tiles;
 
 /// List of keywords that cannot be used as source IDs. Some of these are reserved for future use.
+///
 /// Reserved keywords must never end in a "dot number" (e.g. ".1").
 /// This list is documented in the `docs/content/using.md` file, which should be kept in sync.
 pub const RESERVED_KEYWORDS: &[&str] = &[
@@ -94,6 +95,7 @@ impl DebouncedWarning {
         let mut last = self.last_warning.lock().await;
         if last.elapsed() >= Duration::from_hours(1) {
             *last = std::time::Instant::now();
+            drop(last);
             f();
         }
     }

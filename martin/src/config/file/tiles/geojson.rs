@@ -13,7 +13,7 @@ use crate::config::file::{
 };
 
 /// The MVT-spec tile extent `MapLibre` assumes, used when none is configured.
-fn default_extent() -> NonZeroU32 {
+const fn default_extent() -> NonZeroU32 {
     NonZeroU32::new(4096).expect("4096 is non-zero")
 }
 
@@ -41,6 +41,7 @@ const fn is_default_buffer(buffer: &u32) -> bool {
     Clone,
     Debug,
     PartialEq,
+    Eq,
     Serialize,
     Deserialize,
     CollectUnrecognizedKeys,

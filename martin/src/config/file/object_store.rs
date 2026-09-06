@@ -291,9 +291,7 @@ impl ObjectStoreConfig {
                 "Credentials from {namespace}.profile are ignored because request signing is disabled."
             );
         } else if let Some(provider) = sdk_config.credentials_provider() {
-            self.aws_credentials = Some(Arc::new(AwsSdkCredentialProvider {
-                provider: provider.clone(),
-            }));
+            self.aws_credentials = Some(Arc::new(AwsSdkCredentialProvider { provider }));
         }
     }
 
@@ -575,7 +573,7 @@ mod tests {
 
 /// Shared object-store HTTP client cache.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct SharedHttpClients(pub(crate) Arc<DashMap<String, HttpClient>>);
+pub struct SharedHttpClients(pub(crate) Arc<DashMap<String, HttpClient>>);
 
 impl HttpConnector for SharedHttpClients {
     fn connect(&self, options: &ClientOptions) -> object_store::Result<HttpClient> {
