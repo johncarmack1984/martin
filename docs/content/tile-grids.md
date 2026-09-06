@@ -17,7 +17,7 @@ It covers the whole world (minus the poles) with one tile at zoom 0, four at zoo
 Some data is published on a different grid.
 Examples are national grids like New Zealand's NZTM2000, grids centred on a pole, or grids for other planets.
 Such data only keeps its shape and accuracy on its own grid, so Martin can serve a source on that grid instead.
-Clients like [MapLibre GL JS](https://github.com/maplibre/maplibre-gl-js/pull/8287) (via `addProjection` with a `tileMatrix`) or [OpenLayers](https://gis.stackexchange.com/questions/394782/openlayers-custom-tilegrid-for-scanned-map-image-how-to-calculate-resolutions) (via a custom tile grid) can then render it.
+Clients like [MapLibre GL JS](https://github.com/maplibre/maplibre-gl-js/pull/8287) (via `addProjection` with a `tileMatrix`) or [OpenLayers](https://openlayers.org/en/latest/apidoc/module-ol_tilegrid_TileGrid-TileGrid.html) (via a custom tile grid) can then render it.
 
 ## What makes up a grid
 
@@ -40,7 +40,7 @@ Columns (`x`) count from the left edge to the right, rows (`y`) from the top edg
 Two grids are built in:
 
 - `WebMercatorQuad` is **the default** in Martin and in all modern web maps (MapLibre, Google, Mapbox, ...).
-  Because of the underlying math, this should be what you reach to for performat, global maps.
+  Because of the underlying math, this should be what you reach for on performant, global maps.
 - `WorldCRS84Quad` uses plain longitude and latitude as coordinates.
   The world is twice as wide as it is tall in degrees, so zoom 0 has two tiles side by side.
 
@@ -172,7 +172,7 @@ Martin therefore adds extra points along the edges before converting, so the sea
     This is the case for CRS of other planets.
     Set `bounds` in the config if the `TileJSON` should have them.
 
-## Non-geographic grids (floor plans and PC/mobile game maps) { #non-geographic-grids }
+## Non-geographic grids (floor plans and PC/mobile game maps) {#non-geographic-grids}
 
 A grid with `crs: simple` has no location on earth.
 Its units are whatever the data is in, for example pixels of a scanned plan or metres of a game level.
