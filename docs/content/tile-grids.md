@@ -101,9 +101,9 @@ A grid that is `[2, 2]` at zoom 0 is `[1, 1]` at zoom 1, so define it starting t
     Copy `origin` and `extent_at_zoom0` from that document.
     Do not compute them from the region the CRS is meant for, the grid is usually larger or shifted.
 
-!!! warning "Some publishers list `y` before `x`"
-    LINZ does this for NZTM2000Quad, for example.
-    Martin expects `[x, y]`, so you may need to swap the two values.
+!!! warning "Tile matrix set documents list the corner in the axis order of the CRS"
+    For EPSG:2193 and EPSG:4326 that is northing or latitude first, so the LINZ document gives the NZTM2000Quad corner as `[10438190.1652, -3260586.7284]`.
+    Martin always takes `[x, y]`, so swap the two values for such a CRS.
 
 !!! note "Some services count zoom levels differently"
     NASA GIBS starts counting its polar grids at a level that already has 2x2 tiles.
@@ -159,6 +159,14 @@ The archive can then be served back with the same `tile_grid` declared.
 If a table stores its coordinates in a different CRS than its grid, Martin converts each tile square into the table's CRS to find the matching rows.
 A straight edge in one CRS often becomes a curve in another.
 Martin therefore adds extra points along the edges before converting, so the search area covers the whole curved edge.
+
+!!! note "Tiles across the antimeridian"
+    Longitude and latitude, and Web Mercator, cut the world open at 180 degrees.
+    A tile that reaches across that line has no single bounding box in such a CRS.
+    For a table stored in a geographic CRS or in Web Mercator, Martin searches the whole width of the world at the height of that tile instead, so nothing is missed.
+    Such tiles take longer than the tiles around them.
+    Tables in other CRS with such a cut are not detected.
+    Store the data in the grid's CRS to avoid both.
 
 !!! warning "Polar grids"
     A tile that contains a pole cannot be converted this way, because the pole has no single position in most CRS.

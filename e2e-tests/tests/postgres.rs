@@ -1718,6 +1718,14 @@ postgres:
       tile_grid: WorldCRS84Quad
       properties:
         gid: int4
+    points1_nztm:
+      schema: public
+      table: points1
+      srid: 4326
+      geometry_column: geom
+      tile_grid: NZTM2000Quad
+      properties:
+        gid: int4
     floor_plan:
       schema: public
       table: floor_plan
@@ -1905,6 +1913,20 @@ async fn an_archive_can_be_declared_to_be_on_a_grid() {
     assert_eq!(catalog["tiles"]["cities_nztm"]["tile_grid"], "NZTM2000Quad");
     // the declaration changes nothing about the bytes, which pass straight through
     assert_eq!(martin.get("/cities_nztm/0/0/0").await.status(), 200);
+
+    martin.stop().await;
+    assert_tile_grid_warnings(&mut martin);
+}
+
+/// The zoom-0 tile of NZTM2000Quad reaches across 180 degrees, where longitude and latitude cut the world open.
+/// Transformed into WGS84, its corners lie at both ends of the world, so a plain bounding box of them lands on the wrong side and misses the strip next to the cut.
+/// `points1` has a point at 175.7 degrees west inside that strip.
+#[tokio::test]
+async fn a_table_in_wgs84_keeps_its_features_next_to_the_antimeridian() {
+    let (mut martin, _dir) = martin_with_tile_grids().await;
+
+    let dump = tile_dump(&martin, "/points1_nztm/0/0/0").await;
+    insta::assert_snapshot!("nztm2000quad_wgs84_table_0_0_0", dump);
 
     martin.stop().await;
     assert_tile_grid_warnings(&mut martin);

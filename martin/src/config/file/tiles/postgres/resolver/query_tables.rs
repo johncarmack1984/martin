@@ -6,7 +6,7 @@ use std::num::NonZeroU32;
 use futures::pin_mut;
 use martin_core::tiles::postgres::PostgresError::{InvalidFilter, PostgresError};
 use martin_core::tiles::postgres::{PostgresPool, PostgresResult, PostgresSqlInfo};
-use martin_tile_utils::EARTH_CIRCUMFERENCE_DEGREES;
+use martin_tile_utils::{EARTH_CIRCUMFERENCE, EARTH_CIRCUMFERENCE_DEGREES};
 use postgis::ewkb;
 use postgres_protocol::escape::{escape_identifier, escape_literal};
 use serde_json::Value;
@@ -213,6 +213,11 @@ pub async fn table_to_query(
     } else {
         format!("{geometry_column}::geometry")
     };
+    let table_wrap = if grid.is_web_mercator() || srid == grid.srid() {
+        None
+    } else {
+        wrap_width(&pool, srid).await
+    };
     let GridSql {
         geometry,
         envelope,
@@ -224,6 +229,7 @@ pub async fn table_to_query(
         buffer,
         margin,
         pool.supports_tile_margin(),
+        table_wrap,
     );
 
     let limit_clause = max_feature_count.map_or(String::new(), |v| format!("LIMIT {v}"));
@@ -315,6 +321,7 @@ struct GridSql {
 /// Any other grid passes its zoom-0 square to `ST_TileEnvelope` as the `bounds` argument.
 /// It skips the geometry transform when the table already stores the grid's CRS.
 /// It densifies the envelope before transforming it into the table's CRS, so that edges which curve in that CRS still cover the tile.
+/// `table_wrap` is the width of the world in the table's CRS when that CRS cuts the world open at the antimeridian, see [`wrap_width`].
 fn grid_sql(
     grid: &PgTileGrid,
     table_srid: i32,
@@ -322,6 +329,7 @@ fn grid_sql(
     buffer: u32,
     margin: f64,
     supports_tile_margin: bool,
+    table_wrap: Option<f64>,
 ) -> GridSql {
     const TILE: &str = "$1::integer, $2::integer, $3::integer";
     if grid.is_web_mercator() {
@@ -384,9 +392,21 @@ fn grid_sql(
     let bbox_search = if table_srid == grid_srid {
         search
     } else {
-        format!(
+        let transformed = format!(
             "ST_Transform(ST_Segmentize({search}, {extent_at_zoom0} / 2^$1::integer / 8), {table_srid})"
-        )
+        );
+        match table_wrap {
+            // a tile across the cut has vertices at both ends of the world once transformed, so its
+            // bounding box lands on the wrong side and misses the strip next to the cut; search the
+            // whole width of the world at the tile's height instead, and let ST_AsMVTGeom clip
+            Some(width) => {
+                let half = width / 2.0;
+                format!(
+                    "(SELECT CASE WHEN ST_XMax(search) - ST_XMin(search) > {half} THEN ST_MakeEnvelope(-{half}, ST_YMin(search), {half}, ST_YMax(search), {table_srid}) ELSE search END FROM (SELECT {transformed} AS search) AS s)"
+                )
+            }
+            None => transformed,
+        }
     };
     GridSql {
         geometry,
@@ -533,6 +553,31 @@ async fn non_epsg_authority(pool: &PostgresPool, srid: i32) -> Option<String> {
     Some(code.map_or_else(|| authority.clone(), |code| format!("{authority}:{code}")))
 }
 
+/// The width of the world in the units of `srid`, when that CRS cuts the world open at the antimeridian.
+///
+/// Geographic systems are 360 degrees wide and Web Mercator one earth circumference.
+/// Other systems with such a cut are not recognised, and a database failure counts as "no cut", since this only widens a search.
+async fn wrap_width(pool: &PostgresPool, srid: i32) -> Option<f64> {
+    match srid {
+        3857 => return Some(EARTH_CIRCUMFERENCE),
+        4326 => return Some(f64::from(EARTH_CIRCUMFERENCE_DEGREES)),
+        _ => {}
+    }
+    let row = pool
+        .get()
+        .await
+        .ok()?
+        .query_opt(
+            "SELECT proj4text LIKE '%+proj=longlat%' OR srtext LIKE 'GEOGC%' FROM spatial_ref_sys WHERE srid = $1",
+            &[&srid],
+        )
+        .await
+        .ok()??;
+    row.get::<_, Option<bool>>(0)
+        .unwrap_or(false)
+        .then_some(f64::from(EARTH_CIRCUMFERENCE_DEGREES))
+}
+
 #[must_use]
 pub fn polygon_to_bbox(polygon: &ewkb::Polygon) -> Option<Bounds> {
     use postgis::{LineString as _, Point as _, Polygon as _};
@@ -611,6 +656,7 @@ mod tests {
             buffer,
             MARGIN,
             supports_tile_margin,
+            None,
         );
         assert_eq!(
             sql.geometry,
@@ -632,6 +678,7 @@ mod tests {
             64,
             MARGIN,
             true,
+            None,
         );
         insta::assert_snapshot!(sql.geometry, @r#"ST_CurveToLine("geom"::geometry)"#);
         insta::assert_snapshot!(sql.envelope, @"ST_TileEnvelope($1::integer, $2::integer, $3::integer, ST_MakeEnvelope(-3260586.7284, 10438190.1652 - 10018754.1714, -3260586.7284 + 10018754.1714, 10438190.1652, 2193))");
@@ -642,20 +689,38 @@ mod tests {
     fn a_table_in_another_crs_is_transformed_and_searched_through_a_densified_envelope() {
         let sql = grid_sql(
             &nztm2000quad(),
+            27700,
+            "ST_CurveToLine(\"geom\"::geometry)",
+            64,
+            MARGIN,
+            true,
+            None,
+        );
+        insta::assert_snapshot!(sql.geometry, @r#"ST_Transform(ST_CurveToLine("geom"::geometry), 2193)"#);
+        insta::assert_snapshot!(sql.bbox_search, @"ST_Transform(ST_Segmentize(ST_Expand(ST_TileEnvelope($1::integer, $2::integer, $3::integer, ST_MakeEnvelope(-3260586.7284, 10438190.1652 - 10018754.1714, -3260586.7284 + 10018754.1714, 10438190.1652, 2193)), (0.015625 * 10018754.1714) / 2^$1::integer), 10018754.1714 / 2^$1::integer / 8), 27700)");
+    }
+
+    /// `NZTM2000Quad` reaches across 180 degrees, where longitude and latitude cut the world open.
+    /// A tile there has vertices at both ends of the world once transformed, so the search falls back to the whole width of the world at the tile's height.
+    #[test]
+    fn a_table_in_a_crs_with_an_antimeridian_cut_is_searched_across_the_whole_width_when_the_tile_crosses_it()
+     {
+        let sql = grid_sql(
+            &nztm2000quad(),
             4326,
             "ST_CurveToLine(\"geom\"::geometry)",
             64,
             MARGIN,
             true,
+            Some(360.0),
         );
-        insta::assert_snapshot!(sql.geometry, @r#"ST_Transform(ST_CurveToLine("geom"::geometry), 2193)"#);
-        insta::assert_snapshot!(sql.bbox_search, @"ST_Transform(ST_Segmentize(ST_Expand(ST_TileEnvelope($1::integer, $2::integer, $3::integer, ST_MakeEnvelope(-3260586.7284, 10438190.1652 - 10018754.1714, -3260586.7284 + 10018754.1714, 10438190.1652, 2193)), (0.015625 * 10018754.1714) / 2^$1::integer), 10018754.1714 / 2^$1::integer / 8), 4326)");
+        insta::assert_snapshot!(sql.bbox_search, @"(SELECT CASE WHEN ST_XMax(search) - ST_XMin(search) > 180 THEN ST_MakeEnvelope(-180, ST_YMin(search), 180, ST_YMax(search), 4326) ELSE search END FROM (SELECT ST_Transform(ST_Segmentize(ST_Expand(ST_TileEnvelope($1::integer, $2::integer, $3::integer, ST_MakeEnvelope(-3260586.7284, 10438190.1652 - 10018754.1714, -3260586.7284 + 10018754.1714, 10438190.1652, 2193)), (0.015625 * 10018754.1714) / 2^$1::integer), 10018754.1714 / 2^$1::integer / 8), 4326) AS search) AS s)");
     }
 
     #[test]
     fn two_tiles_at_zoom0_are_one_zoom_of_a_double_square() {
         let grid = PgTileGrid::new(martin_tile_utils::WORLD_CRS84_QUAD, 4326);
-        let sql = grid_sql(&grid, 4326, "\"geom\"", 64, MARGIN, true);
+        let sql = grid_sql(&grid, 4326, "\"geom\"", 64, MARGIN, true, None);
         insta::assert_snapshot!(sql.envelope, @"ST_TileEnvelope($1::integer + 1, $2::integer, $3::integer, ST_MakeEnvelope(-180, 90 - 2 * 180, -180 + 2 * 180, 90, 4326))");
         insta::assert_snapshot!(sql.bbox_search, @"ST_Expand(ST_TileEnvelope($1::integer + 1, $2::integer, $3::integer, ST_MakeEnvelope(-180, 90 - 2 * 180, -180 + 2 * 180, 90, 4326)), (0.015625 * 180) / 2^$1::integer)");
     }
@@ -676,6 +741,7 @@ mod tests {
             0,
             0.0,
             true,
+            None,
         );
         insta::assert_snapshot!(sql.geometry, @r#"ST_CurveToLine("geom"::geometry)"#);
         insta::assert_snapshot!(sql.envelope, @"ST_TileEnvelope($1::integer, $2::integer, $3::integer, ST_MakeEnvelope(0, 1000 - 1000, 0 + 1000, 1000, 0))");
@@ -691,6 +757,7 @@ mod tests {
             0,
             0.0,
             true,
+            None,
         );
         insta::assert_snapshot!(sql.bbox_search, @"ST_Transform(ST_Segmentize(ST_TileEnvelope($1::integer, $2::integer, $3::integer, ST_MakeEnvelope(-3260586.7284, 10438190.1652 - 10018754.1714, -3260586.7284 + 10018754.1714, 10438190.1652, 2193)), 10018754.1714 / 2^$1::integer / 8), 4326)");
     }
