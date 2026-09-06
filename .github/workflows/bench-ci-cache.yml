@@ -1,54 +1,66 @@
 name: Bench CI Cache
 
-# Measures the wall-clock cost of the heaviest CI build under the three cache
-# configurations being compared for #950's follow-up: no cache at all, rust-cache,
-# and sccache (which also caches the C/C++ objects from the bundled DuckDB and
-# maplibre-native builds). Dispatch each config at least twice: the first run of a
-# caching config populates the cache, the second measures the payoff.
+# Measures the wall-clock cost of the three heaviest test jobs in rust.yml under the four
+# cache configurations being compared for the #950 / #3156 follow-up: no cache at all,
+# rust-cache, sccache (which also caches the C/C++ objects from the bundled DuckDB and
+# maplibre-native builds) and both stacked. The suites run exactly as CI runs them, with
+# nextest and coverage instrumentation. Push the branch twice: the first run populates the
+# caches, the second measures the payoff. Every matrix cell has its own rust-cache key and
+# its own sccache cache version, so no configuration can read another's artefacts.
 
 on:
-  workflow_dispatch:
-    inputs:
-      cache_config:
-        description: 'Build cache configuration to measure'
-        required: true
-        type: choice
-        options:
-          - none
-          - rust-cache
-          - sccache
+  push:
+    branches: [john/ci-sccache-bench-2]
 
 defaults:
   run:
     shell: bash
 
+permissions:
+  contents: read
+
 jobs:
-  build:
-    name: Build linux-gnu (${{ inputs.cache_config }})
+  bench:
+    name: ${{ matrix.suite }} (${{ matrix.cache_config }})
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [unit, duckdb, rendering]
+        cache_config: [none, rust-cache, sccache, combined]
+    env:
+      SCCACHE_GHA_VERSION: bench2-${{ matrix.suite }}-${{ matrix.cache_config }}
     steps:
       - name: Checkout sources
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
       - name: Setup Rust
-        uses: ./.github/actions/setup-rust
+        uses: $/.github/actions/setup-rust
         with:
-          rendering: "true"
-          sccache: ${{ inputs.cache_config == 'sccache' && 'true' || 'false' }}
-      # setup-rust's `cache` input skips on workflow_dispatch, so the rust-cache
-      # config wires the action directly and always saves.
+          tools: 'just,nextest'
+          rendering: ${{ matrix.suite != 'duckdb' }}
+          coverage: true
+          sccache: ${{ matrix.cache_config == 'sccache' || matrix.cache_config == 'combined' }}
+      # setup-rust's `cache` input only saves on main, so the rust-cache configurations wire
+      # the action directly and always save.
       - name: Restore rust-cache
-        if: inputs.cache_config == 'rust-cache'
+        if: matrix.cache_config == 'rust-cache' || matrix.cache_config == 'combined'
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2 # zizmor: ignore[cache-poisoning] bench-only build cache on a fork
         with:
           save-if: "true"
-          key: bench-ci-cache
-      - name: Build x86_64-unknown-linux-gnu
-        env:
-          TARGET: x86_64-unknown-linux-gnu
-        run: just build-release "$TARGET"
+          key: bench2-${{ matrix.suite }}-${{ matrix.cache_config }}
+      - name: Run the unit tests
+        if: matrix.suite == 'unit'
+        run: just test-packages-ci
+      - name: Run the doc tests
+        if: matrix.suite == 'unit'
+        run: just test-doc
+      - name: Run DuckDB tests
+        if: matrix.suite == 'duckdb'
+        run: just test-duckdb
+      - name: Run rendering tests
+        if: matrix.suite == 'rendering'
+        run: just test-rendering
       - name: sccache stats
-        if: inputs.cache_config == 'sccache'
+        if: matrix.cache_config == 'sccache' || matrix.cache_config == 'combined'
         run: sccache --show-stats
