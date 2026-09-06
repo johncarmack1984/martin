@@ -70,5 +70,9 @@ jobs:
       - name: sccache write errors
         if: matrix.cache_config == 'sccache' || matrix.cache_config == 'combined'
         run: |
-          echo "error/warn lines: $(grep -ciE 'error|warn' /tmp/sccache.log || true)"
-          grep -iE 'error|warn' /tmp/sccache.log | sed -E 's/[0-9a-f]{64}/<hash>/g' | sort | uniq -c | sort -rn | head -20
+          grep -iE 'error|warn' /tmp/sccache.log > /tmp/sccache-errors.log || true
+          echo "error/warn lines: $(wc -l < /tmp/sccache-errors.log)"
+          echo "rate limited at read:  $(grep -c 'RateLimited.*at read' /tmp/sccache-errors.log || true)"
+          echo "rate limited at write: $(grep -c 'RateLimited.*at write' /tmp/sccache-errors.log || true)"
+          sed -E 's/^\[[^]]*\] //; s/[0-9a-f]{64}/<hash>/g' /tmp/sccache-errors.log | sort | uniq -c | sort -rn > /tmp/sccache-histogram.txt
+          head -20 /tmp/sccache-histogram.txt
