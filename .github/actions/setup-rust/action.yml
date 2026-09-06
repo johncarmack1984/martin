@@ -68,6 +68,10 @@ runs:
         echo "SCCACHE_GHA_ENABLED=true" >> "$GITHUB_ENV"
         echo "CMAKE_C_COMPILER_LAUNCHER=sccache" >> "$GITHUB_ENV"
         echo "CMAKE_CXX_COMPILER_LAUNCHER=sccache" >> "$GITHUB_ENV"
+        # The cc crate (bundled DuckDB, sqlite, ring, zstd) ignores the CMake launcher
+        # variables; it reads the wrapper off CC/CXX instead.
+        echo "CC=sccache cc" >> "$GITHUB_ENV"
+        echo "CXX=sccache c++" >> "$GITHUB_ENV"
     - if: inputs.sccache != 'true' && inputs.cache == 'true' && github.event_name != 'release' && github.event_name != 'workflow_dispatch'
       uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2 # zizmor: ignore[cache-poisoning] dev-only build cache; poisoning risk accepted
       with:

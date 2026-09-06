@@ -29,7 +29,10 @@ jobs:
         suite: [unit, duckdb, rendering]
         cache_config: [none, rust-cache, sccache, combined]
     env:
-      SCCACHE_GHA_VERSION: bench2-${{ matrix.suite }}-${{ matrix.cache_config }}
+      SCCACHE_GHA_VERSION: bench3-${{ matrix.suite }}-${{ matrix.cache_config }}
+      # sccache's own log, so a failed cache write shows its reason (rate limit, conflict, size)
+      SCCACHE_ERROR_LOG: /tmp/sccache.log
+      SCCACHE_LOG: info
     steps:
       - name: Checkout sources
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -48,7 +51,7 @@ jobs:
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2 # zizmor: ignore[cache-poisoning] bench-only build cache on a fork
         with:
           save-if: "true"
-          key: bench2-${{ matrix.suite }}-${{ matrix.cache_config }}
+          key: bench3-${{ matrix.suite }}-${{ matrix.cache_config }}
       - name: Run the unit tests
         if: matrix.suite == 'unit'
         run: just test-packages-ci
@@ -64,3 +67,8 @@ jobs:
       - name: sccache stats
         if: matrix.cache_config == 'sccache' || matrix.cache_config == 'combined'
         run: sccache --show-stats
+      - name: sccache write errors
+        if: matrix.cache_config == 'sccache' || matrix.cache_config == 'combined'
+        run: |
+          echo "error/warn lines: $(grep -ciE 'error|warn' /tmp/sccache.log || true)"
+          grep -iE 'error|warn' /tmp/sccache.log | sed -E 's/[0-9a-f]{64}/<hash>/g' | sort | uniq -c | sort -rn | head -20
