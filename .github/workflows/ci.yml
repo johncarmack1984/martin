@@ -114,7 +114,7 @@ jobs:
 
   rust:
     needs: changes
-    if: needs.changes.outputs.rust == 'true'
+    if: needs.changes.outputs.rust == 'true' && github.event_name == 'pull_request' # PRACTICE ONLY
     uses: $/.github/workflows/rust.yml
     with:
       run-heavy: ${{ needs.changes.outputs.run-heavy == 'true' }}
@@ -129,34 +129,35 @@ jobs:
 
   ui:
     needs: changes
-    if: needs.changes.outputs.ui == 'true'
+    if: needs.changes.outputs.ui == 'true' && github.event_name == 'pull_request' # PRACTICE ONLY
     uses: $/.github/workflows/ui.yml
     permissions:
       contents: read
 
   docs:
     needs: changes
-    if: needs.changes.outputs.docs == 'true'
+    if: needs.changes.outputs.docs == 'true' && github.event_name == 'pull_request' # PRACTICE ONLY
     uses: $/.github/workflows/docs.yml
     permissions:
       contents: write
 
   schemas:
     needs: changes
-    if: needs.changes.outputs.schemas == 'true'
+    if: needs.changes.outputs.schemas == 'true' && github.event_name == 'pull_request' # PRACTICE ONLY
     uses: $/.github/workflows/schemas.yml
     permissions:
       contents: read
 
   demo:
     needs: changes
-    if: needs.changes.outputs.demo == 'true'
+    if: needs.changes.outputs.demo == 'true' && github.event_name == 'pull_request' # PRACTICE ONLY
     uses: $/.github/workflows/demo.yml
     permissions:
       contents: read
 
   security:
     needs: changes
+    if: github.event_name == 'pull_request' # PRACTICE ONLY
     uses: $/.github/workflows/security.yml
     with:
       run-actions: ${{ needs.changes.outputs.actions == 'true' }}

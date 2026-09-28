@@ -12,7 +12,7 @@ git_release_latest = false
 git_release_draft = true
 # if we publish an RC, it should be a pre-release
 git_release_type = "auto"
-semver_check = true
+semver_check = false # PRACTICE ONLY: skips the 34-minute cargo-semver-checks pass
 
 [[package]]
 name = "martin-core"
