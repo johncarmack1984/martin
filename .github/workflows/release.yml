@@ -196,10 +196,10 @@ jobs:
     needs: [ package ]
     if: |
       always()
-      && (needs.package.result == 'success' || needs.package.result == 'skipped') # PRACTICE ONLY
+      && (needs.package.result == 'success' || needs.package.result == 'skipped')
       && github.event_name == 'push'
       && github.ref == 'refs/heads/main'
-      && github.repository_owner == 'johncarmack1984' # PRACTICE ONLY
+      && github.repository_owner == 'johncarmack1984'
     runs-on: ubuntu-latest
     timeout-minutes: 90
     permissions:
