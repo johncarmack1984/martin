@@ -782,3 +782,4 @@ jobs:
           file: target/cobertura.xml
           language: Rust
           label: code-coverage/llvm-cov
+          fail-on-error: false # PRACTICE ONLY: code coverage is not available on a personal account
