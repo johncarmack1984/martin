@@ -262,10 +262,16 @@ impl PostgresPool {
         }
         // Held until PostGIS is checked, so the connection that loaded it goes back to the pool first.
         let conn = self.get().await?;
-        self.postgis_checked
+        let checked = self
+            .postgis_checked
             .get_or_try_init(|| check_postgis_on(&conn, &self.id))
             .await
-            .copied()
+            .copied();
+        // The held connection then loads PostGIS in the background, so its first tile does not.
+        tokio::spawn(async move {
+            let _ = conn.simple_query("SELECT PostGIS_Lib_Version()").await;
+        });
+        checked
     }
 }
 
