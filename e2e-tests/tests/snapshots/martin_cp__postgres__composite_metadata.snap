@@ -2,7 +2,7 @@
 source: e2e-tests/tests/martin_cp.rs
 expression: metadata
 ---
-agg_tiles_hash = 0F9443984E72F29ED84B18BF24C644C5
+agg_tiles_hash = 1FB05D6F72DF491F0C9C58F666D0B0C0
 bounds = -2,-1,142.8413150986,45
 compression = gzip
 description = public.function_zxy_query_test

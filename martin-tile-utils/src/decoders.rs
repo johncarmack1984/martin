@@ -36,6 +36,17 @@ pub fn encode_gzip(data: &[u8]) -> Result<Vec<u8>, std::io::Error> {
     Ok(compressed)
 }
 
+/// Encodes with the given gzip level, clamped to the valid `0..=9` range.
+pub fn encode_gzip_with_level(data: &[u8], level: u32) -> Result<Vec<u8>, std::io::Error> {
+    let mut encoder = hotpath::io!(
+        GzEncoder::new(data, flate2::Compression::new(level.min(9))),
+        label = "encode_gzip_with_level"
+    );
+    let mut compressed = Vec::new();
+    encoder.read_to_end(&mut compressed)?;
+    Ok(compressed)
+}
+
 pub fn decode_brotli(data: &[u8]) -> Result<Vec<u8>, std::io::Error> {
     let mut decoder = hotpath::io!(
         brotli::Decompressor::new(data, 4096),

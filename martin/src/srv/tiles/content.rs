@@ -16,7 +16,7 @@ use martin_core::cache::CacheKey as _;
 use martin_core::tiles::{BoxedSource, MartinCoreError, Tile, TileCache, TileCacheKey, UrlQuery};
 use martin_tile_utils::{
     Encoding, Format, TileCoord, TileInfo, decode_brotli, decode_gzip, decode_zlib, decode_zstd,
-    encode_brotli_with_quality, encode_gzip, encode_zlib, encode_zstd,
+    encode_brotli_with_quality, encode_gzip_with_level, encode_zlib, encode_zstd,
 };
 use serde::Deserialize;
 use tracing::{instrument, warn};
@@ -923,6 +923,9 @@ impl<'a> DynTileSource<'a> {
 /// Brotli quality level for on-the-fly response compression
 const BROTLI_ENCODE_QUALITY: u32 = 6;
 
+/// Gzip level for on-the-fly response compression
+const GZIP_ENCODE_LEVEL: u32 = 2;
+
 #[expect(
     clippy::wildcard_enum_match_arm,
     reason = "actix's ContentEncoding is #[non_exhaustive]; anything we cannot encode is served as-is"
@@ -938,7 +941,7 @@ fn encode(tile: Tile, enc: ContentEncoding) -> Result<Tile, TileError> {
             etag,
         ),
         ContentEncoding::Gzip => Tile::new_with_etag(
-            encode_gzip(&tile.data)?,
+            encode_gzip_with_level(&tile.data, GZIP_ENCODE_LEVEL)?,
             tile.info.encoding(Encoding::Gzip),
             etag,
         ),
@@ -1141,7 +1144,7 @@ mod tests {
 
     fn compress_with(data: &[u8], encoding: Encoding) -> Vec<u8> {
         match encoding {
-            Encoding::Gzip => encode_gzip(data).unwrap(),
+            Encoding::Gzip => encode_gzip_with_level(data, GZIP_ENCODE_LEVEL).unwrap(),
             Encoding::Brotli => encode_brotli_with_quality(data, BROTLI_ENCODE_QUALITY).unwrap(),
             Encoding::Zlib => encode_zlib(data).unwrap(),
             Encoding::Zstd => encode_zstd(data).unwrap(),

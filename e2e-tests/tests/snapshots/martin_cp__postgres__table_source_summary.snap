@@ -3,7 +3,7 @@ source: e2e-tests/tests/martin_cp.rs
 expression: summary
 ---
 {
-  "avg_tile_size": 198.3228346456,
+  "avg_tile_size": 198.6141732283,
   "bbox": [
     -180.0,
     -85.0511287798,
@@ -12,7 +12,7 @@ expression: summary
   ],
   "file_path": "[TMP]",
   "file_size": 0,
-  "max_tile_size": 757,
+  "max_tile_size": 758,
   "max_zoom": 6,
   "mbt_type": "Flat",
   "min_tile_size": 72,
@@ -22,28 +22,28 @@ expression: summary
   "tile_count": 127,
   "zoom_info": [
     {
-      "avg_tile_size": 678.0,
+      "avg_tile_size": 683.0,
       "bbox": [
         -180.0,
         -85.0511287798,
         180.0,
         85.0511287798
       ],
-      "max_tile_size": 678,
-      "min_tile_size": 678,
+      "max_tile_size": 683,
+      "min_tile_size": 683,
       "tile_count": 1,
       "zoom": 0
     },
     {
-      "avg_tile_size": 460.5,
+      "avg_tile_size": 467.0,
       "bbox": [
         -180.0,
         -85.0511287798,
         180.0,
         85.0511287798
       ],
-      "max_tile_size": 747,
-      "min_tile_size": 352,
+      "max_tile_size": 758,
+      "min_tile_size": 354,
       "tile_count": 4,
       "zoom": 1
     },
@@ -61,33 +61,33 @@ expression: summary
       "zoom": 2
     },
     {
-      "avg_tile_size": 249.75,
+      "avg_tile_size": 249.875,
       "bbox": [
         -45.0,
         -40.9798980696,
         180.0,
         66.5132604431
       ],
-      "max_tile_size": 757,
+      "max_tile_size": 758,
       "min_tile_size": 72,
       "tile_count": 8,
       "zoom": 3
     },
     {
-      "avg_tile_size": 228.3076923076,
+      "avg_tile_size": 228.1538461538,
       "bbox": [
         -22.5,
         -21.9430455334,
         157.5000000000,
         55.7765730186
       ],
-      "max_tile_size": 712,
+      "max_tile_size": 710,
       "min_tile_size": 72,
       "tile_count": 13,
       "zoom": 4
     },
     {
-      "avg_tile_size": 195.1851851851,
+      "avg_tile_size": 195.2222222222,
       "bbox": [
         -11.25,
         -11.1784018737,
@@ -100,7 +100,7 @@ expression: summary
       "zoom": 5
     },
     {
-      "avg_tile_size": 153.5217391304,
+      "avg_tile_size": 153.6086956521,
       "bbox": [
         -5.625,
         -5.6159858191,
