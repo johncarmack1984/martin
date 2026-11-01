@@ -248,6 +248,8 @@ insta.opt-level = 3
 similar.opt-level = 3
 # very large debug bundles
 libduckdb-sys.debug = false
+# DuckDB at opt-level 0 is slow enough to time out the bounds tests on CI
+libduckdb-sys.opt-level = 1
 # See https://doc.rust-lang.org/cargo/reference/profiles.html#build-dependencies
 proc-macro2.debug = false
 quote.debug = false
