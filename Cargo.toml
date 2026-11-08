@@ -257,3 +257,6 @@ unicode-ident.debug = false
 # Make release binaries a bit smaller
 lto = true
 codegen-units = 1
+
+[patch.crates-io]
+actix-http = { git = "https://github.com/actix/actix-web", rev = "614379e890995217f943ccf161bac13c2325c1b9" }
