@@ -36,8 +36,8 @@ dependencies = [
 
 [[package]]
 name = "actix-http"
-version = "3.21.0"
-source = "git+https://github.com/actix/actix-web?rev=614379e890995217f943ccf161bac13c2325c1b9#614379e890995217f943ccf161bac13c2325c1b9"
+version = "3.20.5"
+source = "git+https://github.com/actix/actix-web?rev=2e2879508a92e5fff6fda4028f4f014606a8a394#2e2879508a92e5fff6fda4028f4f014606a8a394"
 dependencies = [
  "actix-codec",
  "actix-service",
